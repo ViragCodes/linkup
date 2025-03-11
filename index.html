@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkUp</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 2em;
+            display: flex;
+        }
+
+        h1 div {
+            transform: scaleY(-1);
+        }
+
+        .input-group {
+            display: flex;
+            margin-bottom: 20px;
+        }
+
+        #linkInput {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #444;
+            background-color: #333;
+            color: #f0f0f0;
+            border-radius: 4px 0 0 4px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 0 4px 4px 0;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+
+        th {
+            background-color: #333;
+        }
+
+        tr {
+            background-color: #2a2a2a;
+            cursor: move;
+        }
+
+        tr:hover {
+            background-color: #3a3a3a;
+        }
+
+        .delete-btn {
+            background-color: #f44336;
+            padding: 6px 10px;
+            border-radius: 4px;
+        }
+
+        .dragging {
+            opacity: 0.5;
+        }
+
+        .list-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        #saveListBtn,
+        #openListBtn {
+            padding: 8px 16px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #openListBtn {
+            background-color: #6C757D;
+        }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            background-color: #333;
+            min-width: 160px;
+            box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+            z-index: 1;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .dropdown-content a {
+            color: #f0f0f0;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            cursor: pointer;
+        }
+
+        .dropdown-content a:hover {
+            background-color: #444;
+        }
+
+        .show {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <nav>
+            <h1><div>🖇️</div>inkUp </h1>
+            <div class="list-controls">
+                <div class="dropdown">
+                    <button id="openListBtn">Open List ▼</button>
+                    <div id="listDropdown" class="dropdown-content">
+                    </div>
+                </div>
+                <button id="saveListBtn">Save List</button>
+            </div>
+        </nav>
+
+        <div class="input-group">
+            <input type="text" id="linkInput" placeholder="Enter URL(s) separated by commas">
+            <button onclick="addLinks()">Add</button>
+        </div>
+
+        <table id="linkTable">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Link</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="linkTableBody">
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let currentListName = 'Untitled List';
+        document.addEventListener('DOMContentLoaded', function () {
+            const tbody = document.getElementById('linkTableBody');
+            const openListBtn = document.getElementById('openListBtn');
+            const listDropdown = document.getElementById('listDropdown');
+
+            let draggedItem = null;
+
+            tbody.addEventListener('dragstart', function (e) {
+                draggedItem = e.target.closest('tr');
+                e.target.closest('tr').classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            tbody.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                const tr = e.target.closest('tr');
+                if (tr && tr !== draggedItem) {
+                    const rect = tr.getBoundingClientRect();
+                    const y = e.clientY - rect.top;
+                    const height = rect.height;
+
+                    if (y < height / 2) {
+                        tbody.insertBefore(draggedItem, tr);
+                    } else {
+                        tbody.insertBefore(draggedItem, tr.nextSibling);
+                    }
+
+                    updateRowNumbers();
+                }
+            });
+
+            tbody.addEventListener('dragend', function (e) {
+                e.target.closest('tr').classList.remove('dragging');
+                draggedItem = null;
+                updateRowNumbers();
+            });
+
+            openListBtn.addEventListener('click', function () {
+                listDropdown.classList.toggle('show');
+                populateDropdown();
+            });
+
+            window.addEventListener('click', function (event) {
+                if (!event.target.matches('#openListBtn')) {
+                    if (listDropdown.classList.contains('show')) {
+                        listDropdown.classList.remove('show');
+                    }
+                }
+            });
+
+            document.getElementById('saveListBtn').addEventListener('click', saveList);
+        });
+
+        function addLinks() {
+            const linkInput = document.getElementById('linkInput');
+            const links = linkInput.value.split(',').map(link => link.trim());
+            if (links.length === 0) return;
+
+            const tbody = document.getElementById('linkTableBody');
+            let existingLinks = Array.from(tbody.querySelectorAll('a')).map(a => a.href);
+
+            for (const link of links) {
+                const url = link.startsWith('http') ? link : 'https://' + link;
+                if (existingLinks.includes(url)) continue;
+                existingLinks.push(url);
+                
+                const tr = document.createElement('tr');
+                tr.draggable = true;
+
+                const tdNumber = document.createElement('td');
+                tdNumber.className = 'row-number';
+                tdNumber.textContent = tbody.children.length + 1;
+
+                const tdLink = document.createElement('td');
+                const a = document.createElement('a');
+                a.href = url;
+                a.textContent = url;
+                a.target = '_blank';
+                a.style.color = '#2196F3';
+                tdLink.appendChild(a);
+
+                const tdActions = document.createElement('td');
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.onclick = function () {
+                    tr.remove();
+                    updateRowNumbers();
+                };
+                tdActions.appendChild(deleteBtn);
+
+                tr.appendChild(tdNumber);
+                tr.appendChild(tdLink);
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            }
+
+            linkInput.value = '';
+        }
+
+        function updateRowNumbers() {
+            const rows = document.querySelectorAll('#linkTableBody tr');
+            rows.forEach((row, index) => {
+                row.querySelector('.row-number').textContent = index + 1;
+            });
+        }
+        function saveList() {
+            const rows = document.querySelectorAll('#linkTableBody tr');
+            if (rows.length === 0) {
+                alert('There are no links to save!');
+                return;
+            }
+
+            const listName = prompt('Enter a name for this list:', currentListName);
+            if (!listName) return;
+
+            const links = [];
+            rows.forEach(row => {
+                const linkElement = row.querySelector('a');
+                if (linkElement) {
+                    links.push(linkElement.href);
+                }
+            });
+
+            const savedLists = JSON.parse(localStorage.getItem('linkLists') || '{}');
+            savedLists[listName] = links.join(',');
+            localStorage.setItem('linkLists', JSON.stringify(savedLists));
+
+            alert(`List "${listName}" saved successfully!`);
+        }
+
+        function populateDropdown() {
+            const listDropdown = document.getElementById('listDropdown');
+            listDropdown.innerHTML = '';
+
+            const savedLists = JSON.parse(localStorage.getItem('linkLists') || '{}');
+            const listNames = Object.keys(savedLists);
+
+            if (listNames.length === 0) {
+                const noLists = document.createElement('a');
+                noLists.textContent = 'No saved lists';
+                noLists.style.fontStyle = 'italic';
+                noLists.style.cursor = 'default';
+                listDropdown.appendChild(noLists);
+                return;
+            }
+
+            listNames.forEach(name => {
+                const listItem = document.createElement('a');
+                listItem.textContent = name;
+                listItem.addEventListener('click', function () {
+                    loadList(name);
+                    listDropdown.classList.remove('show');
+                });
+                listDropdown.appendChild(listItem);
+            });
+        }
+
+        function loadList(listName) {
+            const savedLists = JSON.parse(localStorage.getItem('linkLists') || '{}');
+            const linkString = savedLists[listName];
+            currentListName = listName;
+
+            if (!linkString) return;
+
+            document.getElementById('linkTableBody').innerHTML = '';
+
+            document.getElementById('linkInput').value = linkString;
+            addLinks();
+        }
+    </script>
+</body>
+</html>
